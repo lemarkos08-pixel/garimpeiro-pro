@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
+import re
 from datetime import datetime, timedelta
 from googleapiclient.discovery import build
 
-# Configuração da página com tema escuro nativo
 st.set_page_config(
     page_title="TubeModeler Pro - Garimpador AI",
     page_icon="🔥",
@@ -11,7 +11,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilização CSS Avançada (Tema Dark Profissional)
 st.markdown("""
     <style>
     .stApp {
@@ -58,20 +57,18 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Cabeçalho Principal Estilizado
 st.markdown("""
     <div class="studio-header">
         <div style="display: flex; align-items: center; justify-content: space-between;">
             <div>
                 <span style="background-color: #ef4444; color: white; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: bold;">🔥 TUBE MODELER PRO</span>
                 <h1 style="margin: 10px 0 5px 0; font-size: 28px; color: #ffffff;">Radar de Canais Outliers & Oportunidades</h1>
-                <p style="color: #9ca3af; margin: 0; font-size: 14px;">Garimpe canais de alto engajamento através da relação exata de Views ÷ Inscritos + Canais de Referência.</p>
+                <p style="color: #9ca3af; margin: 0; font-size: 14px;">Garimpe canais de alto engajamento com filtros avançados e anti-fantasmas.</p>
             </div>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# Barra Lateral (Sidebar) Moderna para Parâmetros e Referências
 with st.sidebar:
     st.markdown("### ⚙️ Painel de Controle")
     st.markdown("---")
@@ -88,20 +85,23 @@ with st.sidebar:
         nicho = nicho_opcao.lower()
         
     max_resultados = st.slider("🔍 Quantos canais buscar", 10, 50, 20, 10)
+    
+    st.markdown("---")
+    st.markdown("### 🛡️ Filtros Anti-Fantasmas")
+    min_inscritos = st.number_input("👥 Mínimo de Inscritos", value=100, step=50, help="Barra canais recém-criados sem público.")
     max_inscritos = st.number_input("👥 Máximo de Inscritos", value=35000, step=5000)
-    min_relacao = st.number_input("📈 Relação Mínima (Views/Inscritos)", value=30.0, step=5.0)
+    min_videos = st.number_input("🎬 Mínimo de Vídeos no Canal", value=3, step=1, help="Garante que o canal tem conteúdo publicado.")
+    min_relacao = st.number_input("📈 Relação Mínima (Views/Inscritos)", value=15.0, step=5.0)
     idade_maxima = st.number_input("📅 Idade máxima (Dias)", value=300, step=30)
     
     st.markdown("---")
     st.markdown("### 🎯 Canais de Referência")
-    st.markdown("<p style='font-size: 11px; color: #9ca3af;'>Cole os IDs dos canais que deseja analisar diretamente (um por linha):</p>", unsafe_allow_html=True)
-    canais_ref_texto = st.text_area("IDs de Referência", value="", height=100, placeholder="Ex: UC_x5XG1OV2P6uZZ5FSM9Ttw")
+    canais_ref_texto = st.text_area("IDs de Referência (um por linha)", value="", height=80, placeholder="Ex: UC_x5XG1OV2P6uZZ5FSM9Ttw")
     lista_referencias = [c.strip() for c in canais_ref_texto.split("\n") if c.strip()]
     
     st.markdown("---")
     executar_busca = st.button("🚀 INICIAR GARIMPAGEM", use_container_width=True, type="primary")
 
-# Função de busca otimizada
 def pegar_dados_canal(youtube_client, canal_id, origem="Busca automática"):
     try:
         stats = youtube_client.channels().list(
@@ -136,7 +136,6 @@ def pegar_dados_canal(youtube_client, canal_id, origem="Busca automática"):
     except Exception as e:
         return None
 
-# Área Principal de Resultados
 if executar_busca:
     if not chave_api:
         st.error("⚠️ Insira a Chave da API do YouTube na barra lateral.")
@@ -145,10 +144,9 @@ if executar_busca:
             youtube = build("youtube", "v3", developerKey=chave_api)
             todos_canais = []
             
-            with st.spinner(f"🔍 Analisando ecossistema e referências..."):
+            with st.spinner(f"🔍 Analisando ecossistema aplicando filtros de qualidade..."):
                 data_limite = (datetime.now() - timedelta(days=idade_maxima)).isoformat() + "Z"
                 
-                # 1. Busca Automática por Nicho
                 request = youtube.search().list(
                     q=nicho, type="channel", part="id,snippet",
                     maxResults=max_resultados, publishedAfter=data_limite
@@ -158,11 +156,13 @@ if executar_busca:
                 for item in response.get("items", []):
                     canal_id = item["id"]["channelId"]
                     dados = pegar_dados_canal(youtube, canal_id, origem="Outlier Detectado")
-                    if dados and 0 < dados["inscritos"] <= max_inscritos:
-                        if dados["relacao_vid_ins"] >= min_relacao:
-                            todos_canais.append(dados)
+                    if dados:
+                        # Validação rigorosa dos filtros anti-fantasmas
+                        if min_inscritos <= dados["inscritos"] <= max_inscritos:
+                            if dados["videos"] >= min_videos:
+                                if dados["relacao_vid_ins"] >= min_relacao:
+                                    todos_canais.append(dados)
                 
-                # 2. Análise Direta dos Canais de Referência (se informados)
                 if lista_referencias:
                     for cid in lista_referencias:
                         dados_ref = pegar_dados_canal(youtube, cid, origem="✅ Referência Direta")
@@ -170,7 +170,7 @@ if executar_busca:
                             todos_canais.append(dados_ref)
             
             if todos_canais:
-                st.success(f"🎉 Sucesso! Encontrados {len(todos_canais)} canais para modelagem.")
+                st.success(f"🎉 Sucesso! Encontrados {len(todos_canais)} canais qualificados.")
                 
                 for canal in todos_canais:
                     st.markdown(f"""
@@ -187,7 +187,7 @@ if executar_busca:
                                         <div class="metric-box"><span style="font-size: 11px; color: #9ca3af;">Inscritos</span><br><b style="color: #fff;">{canal['inscritos']:,}</b></div>
                                         <div class="metric-box"><span style="font-size: 11px; color: #9ca3af;">Média Views/Vídeo</span><br><b style="color: #38bdf8;">{canal['media_visualizacoes_video']:,}</b></div>
                                         <div class="metric-box"><span style="font-size: 11px; color: #9ca3af;">Índice Outlier</span><br><b style="color: #4ade80;">{canal['relacao_vid_ins']}x</b></div>
-                                        <div class="metric-box"><span style="font-size: 11px; color: #9ca3af;">Criação</span><br><b style="color: #fff;">{canal['data_criacao']}</b></div>
+                                        <div class="metric-box"><span style="font-size: 11px; color: #9ca3af;">Vídeos / Criação</span><br><b style="color: #fff;">{canal['videos']} v. ({canal['data_criacao']})</b></div>
                                     </div>
                                 </div>
                             </div>
@@ -199,11 +199,14 @@ if executar_busca:
                         st.link_button("🔗 Ver Canal", canal['url'], use_container_width=True)
                     st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
                 
+                # Nome de arquivo seguro contra caracteres especiais e acentos
+                nicho_limpo = re.sub(r'[^a-zA-Z0-9]', '_', nicho)
+                nome_arquivo = f"tubemodeler_{nicho_limpo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                
                 df = pd.DataFrame(todos_canais)
-                nome_arquivo = f"tubemodeler-{nicho.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                 df.to_excel(nome_arquivo, index=False)
                 
-                with open(nome_arquivo, "rb5") as file:
+                with open(nome_arquivo, "rb") as file:
                     st.download_button(
                         label="📥 Descarregar Relatório Completo em Excel",
                         data=file,
@@ -212,9 +215,9 @@ if executar_busca:
                         use_container_width=True
                     )
             else:
-                st.warning("⚠️ Nenhum canal atingiu estes parâmetros rígidos nesta busca. Tente ajustar os filtros na barra lateral.")
+                st.warning("⚠️ Nenhum canal passou nestes filtros de qualidade. Tente diminuir um pouco o mínimo de inscritos ou o índice outlier na barra lateral.")
                 
         except Exception as e:
             st.error(f"❌ Erro na execução da API: {e}")
 else:
-    st.info("👈 Configure os seus parâmetros ou adicione canais de referência na **barra lateral à esquerda** e clique em **INICIAR GARIMPAGEM**.")
+    st.info("👈 Configure os parâmetros de qualidade na **barra lateral à esquerda** e clique em **INICIAR GARIMPAGEM**.")
