@@ -11,16 +11,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilização CSS Avançada (Tema Dark Profissional / Estilo TubeModeler)
+# Estilização CSS Avançada (Tema Dark Profissional)
 st.markdown("""
     <style>
-    /* Fundo geral e tipografia */
     .stApp {
         background-color: #0b0f19;
         color: #f8fafc;
     }
-    
-    /* Cabeçalho de Estúdio */
     .studio-header {
         background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
         border: 1px solid #374151;
@@ -29,8 +26,6 @@ st.markdown("""
         margin-bottom: 24px;
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
     }
-    
-    /* Cartões de Canais Modernos */
     .canal-card {
         background-color: #111827;
         border: 1px solid #1f2937;
@@ -44,8 +39,6 @@ st.markdown("""
         border-color: #ef4444;
         transform: translateY(-2px);
     }
-    
-    /* Badges e Tags */
     .badge-origem {
         background-color: rgba(239, 68, 68, 0.15);
         color: #ef4444;
@@ -55,8 +48,6 @@ st.markdown("""
         font-weight: 600;
         border: 1px solid rgba(239, 68, 68, 0.3);
     }
-    
-    /* Métricas em destaque */
     .metric-box {
         background-color: #1f2937;
         border-radius: 10px;
@@ -74,13 +65,13 @@ st.markdown("""
             <div>
                 <span style="background-color: #ef4444; color: white; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: bold;">🔥 TUBE MODELER PRO</span>
                 <h1 style="margin: 10px 0 5px 0; font-size: 28px; color: #ffffff;">Radar de Canais Outliers & Oportunidades</h1>
-                <p style="color: #9ca3af; margin: 0; font-size: 14px;">Garimpe canais de alto engajamento com base na relação exata de Views ÷ Inscritos.</p>
+                <p style="color: #9ca3af; margin: 0; font-size: 14px;">Garimpe canais de alto engajamento através da relação exata de Views ÷ Inscritos + Canais de Referência.</p>
             </div>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# Barra Lateral (Sidebar) Moderna para Parâmetros
+# Barra Lateral (Sidebar) Moderna para Parâmetros e Referências
 with st.sidebar:
     st.markdown("### ⚙️ Painel de Controle")
     st.markdown("---")
@@ -97,9 +88,15 @@ with st.sidebar:
         nicho = nicho_opcao.lower()
         
     max_resultados = st.slider("🔍 Quantos canais buscar", 10, 50, 20, 10)
-    max_inscritos = st.number_input("👥 Máximo de Inscritos", value=15000, step=1000)
-    min_relacao = st.number_input("📈 Relação Mínima (Views/Inscritos)", value=10.0, step=1.0)
-    idade_maxima = st.number_input("📅 Idade máxima (Dias)", value=180, step=30)
+    max_inscritos = st.number_input("👥 Máximo de Inscritos", value=35000, step=5000)
+    min_relacao = st.number_input("📈 Relação Mínima (Views/Inscritos)", value=30.0, step=5.0)
+    idade_maxima = st.number_input("📅 Idade máxima (Dias)", value=300, step=30)
+    
+    st.markdown("---")
+    st.markdown("### 🎯 Canais de Referência")
+    st.markdown("<p style='font-size: 11px; color: #9ca3af;'>Cole os IDs dos canais que deseja analisar diretamente (um por linha):</p>", unsafe_allow_html=True)
+    canais_ref_texto = st.text_area("IDs de Referência", value="", height=100, placeholder="Ex: UC_x5XG1OV2P6uZZ5FSM9Ttw")
+    lista_referencias = [c.strip() for c in canais_ref_texto.split("\n") if c.strip()]
     
     st.markdown("---")
     executar_busca = st.button("🚀 INICIAR GARIMPAGEM", use_container_width=True, type="primary")
@@ -148,9 +145,10 @@ if executar_busca:
             youtube = build("youtube", "v3", developerKey=chave_api)
             todos_canais = []
             
-            with st.spinner(f"🔍 Analisando ecossistema de '{nicho}' em busca de outliers..."):
+            with st.spinner(f"🔍 Analisando ecossistema e referências..."):
                 data_limite = (datetime.now() - timedelta(days=idade_maxima)).isoformat() + "Z"
                 
+                # 1. Busca Automática por Nicho
                 request = youtube.search().list(
                     q=nicho, type="channel", part="id,snippet",
                     maxResults=max_resultados, publishedAfter=data_limite
@@ -163,11 +161,17 @@ if executar_busca:
                     if dados and 0 < dados["inscritos"] <= max_inscritos:
                         if dados["relacao_vid_ins"] >= min_relacao:
                             todos_canais.append(dados)
+                
+                # 2. Análise Direta dos Canais de Referência (se informados)
+                if lista_referencias:
+                    for cid in lista_referencias:
+                        dados_ref = pegar_dados_canal(youtube, cid, origem="✅ Referência Direta")
+                        if dados_ref:
+                            todos_canais.append(dados_ref)
             
             if todos_canais:
-                st.success(f"🎉 Sucesso! Encontrados {len(todos_canais)} canais fora da curva para modelagem.")
+                st.success(f"🎉 Sucesso! Encontrados {len(todos_canais)} canais para modelagem.")
                 
-                # Exibição em Cartões Modernos Estilizados
                 for canal in todos_canais:
                     st.markdown(f"""
                         <div class="canal-card">
@@ -190,18 +194,16 @@ if executar_busca:
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # Botão de acesso direto fora do HTML para manter a interatividade nativa do Streamlit
                     col_l, col_r = st.columns([6, 1])
                     with col_r:
                         st.link_button("🔗 Ver Canal", canal['url'], use_container_width=True)
                     st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
                 
-                # Exportação para Excel
                 df = pd.DataFrame(todos_canais)
                 nome_arquivo = f"tubemodeler-{nicho.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                 df.to_excel(nome_arquivo, index=False)
                 
-                with open(nome_arquivo, "rb") as file:
+                with open(nome_arquivo, "rb5") as file:
                     st.download_button(
                         label="📥 Descarregar Relatório Completo em Excel",
                         data=file,
@@ -210,9 +212,9 @@ if executar_busca:
                         use_container_width=True
                     )
             else:
-                st.warning("⚠️ Nenhum canal atingiu estes parâmetros rígidos de outlier nesta busca. Tente relaxar um pouco os filtros na barra lateral.")
+                st.warning("⚠️ Nenhum canal atingiu estes parâmetros rígidos nesta busca. Tente ajustar os filtros na barra lateral.")
                 
         except Exception as e:
             st.error(f"❌ Erro na execução da API: {e}")
 else:
-    st.info("👈 Configure os seus parâmetros na **barra lateral à esquerda** e clique em **INICIAR GARIMPAGEM** para começar a analisar os canais.")
+    st.info("👈 Configure os seus parâmetros ou adicione canais de referência na **barra lateral à esquerda** e clique em **INICIAR GARIMPAGEM**.")
